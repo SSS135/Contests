@@ -32,9 +32,58 @@ Running observation normalization (online mean/variance tracking) was applied du
 
 Separate linear projections per entity type mapped to a shared 64-dim space, with learned type embeddings. Two self-attention blocks (4 heads, head_dim=16, FFN dim 256, GELU). Asteroid padding with attention masking. ~139K actor parameters total.
 
+```
+ Ships [6×41]     Asteroids [≤20×32]     Global [1×13]
+      │                   │                    │
+ Linear+Bias         Linear+Bias          Linear+Bias
+      │                   │                    │
+      ▼                   ▼                    ▼
+ [6×64]              [≤20×64]              [1×64]
+      │                   │                    │
+      +── type_embed ──+──── type_embed ───+── type_embed
+      │                   │                    │
+      └───────────────────┴────────────────────┘
+                          │
+                    [≤27 × 64]  (concatenated entities)
+                          │
+                ┌─────────┴─────────┐
+                │  Self-Attn Block  │ ×2
+                │  (Pre-LN, 4 heads)│
+                │  FFN 64→256→64    │
+                └─────────┬─────────┘
+                          │
+                    [≤27 × 64]  (entity representations)
+                          │
+              ┌───────────┴───────────┐
+              ▼                       ▼
+         Actor Head             Critic Head
+       (separate weights)     (separate weights)
+```
+
 ### Autoregressive Actor Head
 
 Ships were sorted by x-position for canonical ordering. Ship 0 acted independently; ship 1 conditioned on ship 0's action via a learned embedding table; ship 2 conditioned on both prior ships' actions. This enabled inter-ship coordination without explicit role assignment. Not sure how useful the autoregression actually was, but I added it just in case.
+
+```
+Entity representations from backbone
+          │
+     Sort ships by x-position → [ship_0, ship_1, ship_2]
+          │
+          ▼
+   ┌─────────────┐
+   │   Ship 0    │──→ Linear(64, 147) ──→ softmax ──→ action_0
+   └─────────────┘                                        │
+                                                    ar_embed_slot0
+                                                          │
+   ┌─────────────┐                                        ▼
+   │   Ship 1    │──→ concat(repr, embed_0) ──→ Linear ──→ softmax ──→ action_1
+   └─────────────┘                                                        │
+                                                                    ar_embed_slot1
+                                                                          │
+   ┌─────────────┐                                                        ▼
+   │   Ship 2    │──→ concat(repr, embed_0, embed_1) ──→ Linear ──→ softmax ──→ action_2
+   └─────────────┘
+```
 
 ### Flat Discrete Action Space
 
@@ -54,6 +103,20 @@ The flat space was a deliberate choice over an earlier factored 5-head design (s
 ### Unified Critic
 
 A single scalar value head with mean pooling. The critic shared the architecture with the actor but used separate backbone weights.
+
+```
+Entity representations (from critic backbone)
+          │
+     Mean pool over all entities
+          │
+          ▼
+      [64-dim]
+          │
+     Linear(64, 1)
+          │
+          ▼
+     scalar value V(s)
+```
 
 ## Training and Search
 

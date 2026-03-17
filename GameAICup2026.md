@@ -2,6 +2,8 @@
 
 **Built an attention-based neural network bot trained with PPO + Python/JAX.**
 
+https://github.com/user-attachments/assets/bc9c47e4-21fe-49a0-8d92-27f29dbdcf79
+
 ## Introduction
 
 I spent the first two days reimplementing the sim engine in Rust and playing with handcrafted strategies. These got me to around 40th place. Not great, not terrible.
